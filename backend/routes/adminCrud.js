@@ -282,7 +282,46 @@ router.get('/metricas', asyncHandler(async (_req, res) => {
       (SELECT COUNT(*) FROM inscripciones) AS inscripciones,
       (SELECT COUNT(*) FROM resenas) AS resenas`
   );
-  res.json({ categorias, totales: rows[0] });
+  const [estadosActividades] = await pool.query(
+    `SELECT estado, COUNT(*) AS cantidad
+     FROM actividades
+     GROUP BY estado`
+  );
+  const [asistencias] = await pool.query(
+    `SELECT
+      COALESCE(SUM(CASE WHEN asistio = 1 THEN 1 ELSE 0 END), 0) AS confirmadas,
+      COALESCE(SUM(CASE WHEN asistio = 0 THEN 1 ELSE 0 END), 0) AS pendientes
+     FROM inscripciones`
+  );
+  const [topActividades] = await pool.query(
+    `SELECT a.id, a.nombre,
+            COUNT(DISTINCT i.id) AS inscriptos,
+            COALESCE(AVG(r.estrellas), 0) AS promedio_estrellas
+     FROM actividades a
+     LEFT JOIN inscripciones i ON i.actividad_id = a.id
+     LEFT JOIN resenas r ON r.actividad_id = a.id
+     GROUP BY a.id, a.nombre
+     ORDER BY inscriptos DESC, a.id ASC
+     LIMIT 5`
+  );
+  const [calificaciones] = await pool.query(
+    `SELECT niveles.estrellas, COUNT(r.id) AS cantidad
+     FROM (
+       SELECT 1 AS estrellas UNION ALL SELECT 2 UNION ALL SELECT 3
+       UNION ALL SELECT 4 UNION ALL SELECT 5
+     ) niveles
+     LEFT JOIN resenas r ON r.estrellas = niveles.estrellas
+     GROUP BY niveles.estrellas
+     ORDER BY niveles.estrellas`
+  );
+  res.json({
+    categorias,
+    totales: rows[0],
+    estadosActividades,
+    asistencias: asistencias[0],
+    topActividades,
+    calificaciones
+  });
 }));
 
 router.patch('/actividades/:id/estado', asyncHandler(async (req, res) => {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useSesion } from './store.js';
 import Navbar from './components/Navbar.jsx';
+import ContenedorAlertas from './components/ContenedorAlertas.jsx';
 import AdminLayout from './components/AdminLayout.jsx';
 import RutaPrivada from './components/RutaPrivada.jsx';
 import CrudPage from './pages/CrudPage.jsx';
@@ -18,18 +19,18 @@ export default function App() {
   const [errorSesion, setErrorSesion] = useState('');
 
   useEffect(() => {
-    if (!token) {
-      setErrorSesion('');
-      return;
-    }
-    refrescar().catch((error) => setErrorSesion(error.message));
+    if (!token) return;
+    refrescar()
+      .then(() => setErrorSesion(''))
+      .catch((error) => setErrorSesion(error.message));
   }, [token, refrescar]);
 
   return (
     <>
       <Navbar />
+      <ContenedorAlertas />
       <main className="container py-4">
-        {errorSesion && <div className="alert alert-danger">{errorSesion}</div>}
+        {errorSesion && token && <div className="alert alert-danger">{errorSesion}</div>}
         <Routes>
           <Route path="/" element={<Inicio />} />
           <Route path="/login" element={<Login />} />

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
 import ImagenActividad from '../components/ImagenActividad.jsx';
+import ModalConfirmacion from '../components/ModalConfirmacion.jsx';
+import { useNotificaciones } from '../store.js';
 
 const formularioVacio = {
   nombre: '',
@@ -25,6 +27,7 @@ function mostrarFecha(fecha) {
 
 export default function PanelOrganizador() {
   const navigate = useNavigate();
+  const notificar = useNotificaciones((state) => state.notificar);
   const [actividades, setActividades] = useState([]);
   const [etiquetas, setEtiquetas] = useState([]);
   const [inscripciones, setInscripciones] = useState([]);
@@ -33,7 +36,8 @@ export default function PanelOrganizador() {
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
-  const [mensaje, setMensaje] = useState('');
+  const [actividadEliminar, setActividadEliminar] = useState(null);
+  const [eliminando, setEliminando] = useState(false);
 
   const cargarDatos = async () => {
     const [misActividades, misInscripciones, etiquetasDisponibles] = await Promise.all([
@@ -81,7 +85,7 @@ export default function PanelOrganizador() {
     event.preventDefault();
     setGuardando(true);
     setError('');
-    setMensaje('');
+    const estabaEditando = Boolean(actividadEditando);
     try {
       const body = {
         ...form,
@@ -97,11 +101,16 @@ export default function PanelOrganizador() {
       );
       await cargarDatos();
       limpiarFormulario();
-      setMensaje(actividadEditando
-        ? 'Actividad actualizada. Quedó pendiente de revisión.'
-        : 'Actividad creada. Quedó pendiente de revisión.');
+      notificar({
+        tipo: 'success',
+        titulo: estabaEditando ? 'Actividad actualizada' : 'Actividad enviada a revisión',
+        mensaje: estabaEditando
+          ? 'Los cambios quedaron pendientes de revisión.'
+          : 'La actividad se creó y quedó pendiente de revisión.'
+      });
     } catch (e) {
       setError(e.message);
+      notificar({ tipo: 'danger', titulo: 'No se pudo guardar la actividad', mensaje: e.message });
     } finally {
       setGuardando(false);
     }
@@ -119,28 +128,30 @@ export default function PanelOrganizador() {
       etiqueta_id: String(actividad.etiqueta_id)
     });
     setError('');
-    setMensaje('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const eliminarActividad = async (actividad) => {
-    if (!window.confirm(`¿Eliminar la actividad "${actividad.nombre}"?`)) return;
+  const eliminarActividad = async () => {
+    if (!actividadEliminar) return;
     setError('');
-    setMensaje('');
+    setEliminando(true);
     try {
-      await api(`/organizador/actividades/${actividad.id}`, { method: 'DELETE' });
-      setActividades((actuales) => actuales.filter((item) => item.id !== actividad.id));
-      setInscripciones((actuales) => actuales.filter((item) => item.actividad_id !== actividad.id));
-      if (actividadEditando === actividad.id) limpiarFormulario();
-      setMensaje('Actividad eliminada.');
+      await api(`/organizador/actividades/${actividadEliminar.id}`, { method: 'DELETE' });
+      setActividades((actuales) => actuales.filter((item) => item.id !== actividadEliminar.id));
+      setInscripciones((actuales) => actuales.filter((item) => item.actividad_id !== actividadEliminar.id));
+      if (actividadEditando === actividadEliminar.id) limpiarFormulario();
+      notificar({ tipo: 'success', titulo: 'Actividad eliminada', mensaje: 'La actividad se eliminó correctamente.' });
+      setActividadEliminar(null);
     } catch (e) {
       setError(e.message);
+      notificar({ tipo: 'danger', titulo: 'No se pudo eliminar la actividad', mensaje: e.message });
+    } finally {
+      setEliminando(false);
     }
   };
 
   const cambiarAsistencia = async (inscripcion) => {
     setError('');
-    setMensaje('');
     const asistio = Number(inscripcion.asistio) === 1 ? 0 : 1;
     try {
       await api(`/organizador/inscripciones/${inscripcion.id}/asistencia`, {
@@ -150,8 +161,14 @@ export default function PanelOrganizador() {
       setInscripciones((actuales) => actuales.map((item) => (
         item.id === inscripcion.id ? { ...item, asistio } : item
       )));
+      notificar({
+        tipo: 'success',
+        titulo: asistio ? 'Asistencia confirmada' : 'Asistencia desmarcada',
+        mensaje: `${inscripcion.usuario} · ${inscripcion.actividad}`
+      });
     } catch (e) {
       setError(e.message);
+      notificar({ tipo: 'danger', titulo: 'No se pudo actualizar la asistencia', mensaje: e.message });
     }
   };
 
@@ -162,7 +179,15 @@ export default function PanelOrganizador() {
       </button>
       <h1 className="mb-4">Panel del organizador</h1>
       {error && <div className="alert alert-danger">{error}</div>}
-      {mensaje && <div className="alert alert-success">{mensaje}</div>}
+      <ModalConfirmacion
+        abierto={Boolean(actividadEliminar)}
+        titulo="Eliminar actividad"
+        mensaje={actividadEliminar ? `¿Seguro que querés eliminar “${actividadEliminar.nombre}”? Esta acción no se puede deshacer.` : ''}
+        textoConfirmar="Eliminar actividad"
+        cargando={eliminando}
+        onConfirmar={eliminarActividad}
+        onCancelar={() => setActividadEliminar(null)}
+      />
       {cargando ? <p>Cargando...</p> : (
         <>
           <section className="mb-5">
@@ -245,8 +270,20 @@ export default function PanelOrganizador() {
                           <td><span className={`badge ${estadoClase}`}>{estadoNombre}</span></td>
                           <td>
                             <div className="table-actions">
-                              <button className="btn btn-sm btn-outline-primary" onClick={() => editarActividad(actividad)}>Editar</button>
-                              <button className="btn btn-sm btn-outline-danger" onClick={() => eliminarActividad(actividad)}>Eliminar</button>
+                              <button
+                                className="btn btn-sm btn-outline-primary"
+                                title={`Editar ${actividad.nombre}`}
+                                onClick={() => editarActividad(actividad)}
+                              >
+                                Editar
+                              </button>
+                              <button
+                                className="btn btn-sm btn-outline-danger"
+                                title={`Eliminar ${actividad.nombre}`}
+                                onClick={() => setActividadEliminar(actividad)}
+                              >
+                                Eliminar
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -279,6 +316,7 @@ export default function PanelOrganizador() {
                             <div className="table-actions">
                             <button
                               className={`btn btn-sm ${asistio ? 'btn-outline-secondary' : 'btn-success'}`}
+                              title={asistio ? 'Desmarcar asistencia' : 'Confirmar asistencia'}
                               onClick={() => cambiarAsistencia(inscripcion)}
                             >
                               {asistio ? 'Desmarcar asistencia' : 'Marcar asistencia'}

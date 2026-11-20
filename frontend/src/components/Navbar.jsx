@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useSesion } from '../store.js';
+import { useNotificaciones, useSesion } from '../store.js';
 
 export default function Navbar() {
   const [menuAbierto, setMenuAbierto] = useState(false);
   const usuario = useSesion((state) => state.usuario);
   const salir = useSesion((state) => state.salir);
+  const notificar = useNotificaciones((state) => state.notificar);
   const navigate = useNavigate();
 
   const cerrarSesion = () => {
     salir();
+    notificar({ tipo: 'info', titulo: 'Sesión cerrada', mensaje: 'Cerraste sesión correctamente.' });
     setMenuAbierto(false);
     navigate('/');
   };
@@ -19,7 +21,19 @@ export default function Navbar() {
   return (
     <nav className="navbar navbar-expand-lg navbar-dark px-3">
       <div className="container-fluid p-0">
-        <Link className="navbar-brand" to="/" onClick={cerrarMenu}>ActiviTuc</Link>
+        <Link className="navbar-brand" to="/" onClick={cerrarMenu}>
+          <span className="navbar-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 13.2c1.7-4.1 6.2-6.7 12.8-6.4 1.4 5.9-1 10.1-5.3 11.6-3.2 1.1-6.7-.1-8-2.7-.4-.8-.2-1.6.5-2.5Z" />
+              <path d="M13.5 7.2c1.3-2.6 3.6-3.5 6-3.2-.3 2.6-2 4.1-5.3 4.3M7 15c2.4-.7 5.4-2.1 7.8-4.6" />
+            </svg>
+          </span>
+          <span className="navbar-brand-copy">
+            <span>ActiviTuc</span>
+            <small>San Miguel de Tucumán</small>
+          </span>
+        </Link>
         <button
           className="navbar-toggler"
           type="button"

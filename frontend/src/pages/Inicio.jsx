@@ -1,40 +1,50 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import ImagenActividad from '../components/ImagenActividad.jsx';
-import { useSesion } from '../store.js';
+import { useNotificaciones, useSesion } from '../store.js';
 
 export default function Inicio() {
   const usuario = useSesion((state) => state.usuario);
+  const notificar = useNotificaciones((state) => state.notificar);
   const [actividades, setActividades] = useState([]);
   const [etiquetas, setEtiquetas] = useState([]);
   const [etiqueta, setEtiqueta] = useState('');
-  const [cargando, setCargando] = useState(true);
+  const [etiquetaCargada, setEtiquetaCargada] = useState(null);
   const [inscripciones, setInscripciones] = useState(() => new Set());
-  const [cargandoInscripciones, setCargandoInscripciones] = useState(Boolean(usuario));
+  const [inscripcionesUsuarioCargadas, setInscripcionesUsuarioCargadas] = useState(null);
   const [error, setError] = useState('');
-  const [mensaje, setMensaje] = useState('');
+  const cargando = etiquetaCargada !== etiqueta;
+  const usuarioId = usuario?.id;
+  const usuarioRol = usuario?.rol;
+  const cargandoInscripciones = Boolean(usuarioId) && inscripcionesUsuarioCargadas !== usuarioId;
 
   useEffect(() => {
     api('/etiquetas').then(setEtiquetas).catch((e) => setError(e.message));
   }, []);
 
   useEffect(() => {
-    setCargando(true);
+    let vigente = true;
     api(`/actividades${etiqueta ? `?etiqueta=${encodeURIComponent(etiqueta)}` : ''}`)
-      .then(setActividades)
-      .catch((e) => setError(e.message))
-      .finally(() => setCargando(false));
+      .then((items) => {
+        if (!vigente) return;
+        setActividades(items);
+        setError('');
+      })
+      .catch((e) => {
+        if (vigente) setError(e.message);
+      })
+      .finally(() => {
+        if (vigente) setEtiquetaCargada(etiqueta);
+      });
+    return () => { vigente = false; };
   }, [etiqueta]);
 
   useEffect(() => {
     let vigente = true;
-    if (!usuario) {
-      setInscripciones(new Set());
-      setCargandoInscripciones(false);
+    if (!usuarioId) {
       return () => { vigente = false; };
     }
 
-    setCargandoInscripciones(true);
     api('/mi-cuenta')
       .then((cuenta) => {
         if (vigente) {
@@ -45,56 +55,62 @@ export default function Inicio() {
         if (vigente) setError(e.message);
       })
       .finally(() => {
-        if (vigente) setCargandoInscripciones(false);
+        if (vigente) setInscripcionesUsuarioCargadas(usuarioId);
       });
 
     return () => { vigente = false; };
-  }, [usuario?.id, usuario?.rol]);
+  }, [usuarioId, usuarioRol]);
 
   const inscribirse = async (actividadId) => {
     setError('');
-    setMensaje('');
     try {
       await api(`/actividades/${actividadId}/inscripcion`, { method: 'POST' });
       setInscripciones((actuales) => new Set(actuales).add(Number(actividadId)));
-      setMensaje('Inscripción realizada. Podés verla en Mi cuenta.');
+      notificar({ tipo: 'success', titulo: '¡Inscripción confirmada!', mensaje: 'Podés verla en Mi cuenta.' });
     } catch (e) {
       setError(e.message);
+      notificar({ tipo: 'danger', titulo: 'No se pudo completar la inscripción', mensaje: e.message });
     }
   };
 
   return (
     <section>
-      <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+      <header className="catalog-hero mb-4">
         <div>
-          <h1>Actividades</h1>
-          <p>Explorá las actividades disponibles.</p>
+          <span className="hero-eyebrow">SAN MIGUEL DE TUCUMÁN</span>
+          <h1>Encontrá actividades para disfrutar</h1>
+          <p>Descubrí actividades deportivas, culturales y recreativas en el Jardín de la República.</p>
         </div>
-        <select className="form-select w-auto activity-filter" value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)}>
+        <label className="catalog-filter">
+          <span>Filtrar por categoría</span>
+          <select className="form-select activity-filter" value={etiqueta} onChange={(e) => setEtiqueta(e.target.value)}>
           <option value="">Todas las etiquetas</option>
           {etiquetas.map((item) => <option key={item.id} value={item.nombre}>{item.nombre}</option>)}
-        </select>
-      </div>
+          </select>
+        </label>
+      </header>
       {error && <div className="alert alert-danger">{error}</div>}
-      {mensaje && <div className="alert alert-success">{mensaje}</div>}
       {cargando ? <p>Cargando...</p> : (
         <div className="row g-3">
           {actividades.map((actividad) => (
             <article className="col-md-6 col-lg-4" key={actividad.id}>
               <div className="card actividad-card h-100">
-                <ImagenActividad
-                  className="card-img-top actividad-imagen-card"
-                  src={actividad.imagen_url || actividad.imagen}
-                  alt={`Imagen de ${actividad.nombre}`}
-                />
+                <div className="actividad-imagen-contenedor">
+                  <ImagenActividad
+                    className="card-img-top actividad-imagen-card"
+                    src={actividad.imagen_url || actividad.imagen}
+                    alt={`Imagen de ${actividad.nombre}`}
+                  />
+                  <span className="actividad-etiqueta">{actividad.etiqueta}</span>
+                </div>
                 <div className="card-body">
                   <h2 className="h5">{actividad.nombre}</h2>
                   <p>{actividad.descripcion}</p>
-                  <p className="mb-1">{actividad.etiqueta} · {actividad.horario}</p>
-                  <small>
-                    Mensual: ${actividad.precio_mensual.toLocaleString('es-AR')} ·
-                    Semanal: ${actividad.precio_semanal.toLocaleString('es-AR')}
-                  </small>
+                  <p className="actividad-horario mb-3">{actividad.horario}</p>
+                  <div className="actividad-precios-catalogo">
+                    <span><small>Mensual</small><strong>${Number(actividad.precio_mensual).toLocaleString('es-AR')}</strong></span>
+                    <span><small>Semanal</small><strong>${Number(actividad.precio_semanal).toLocaleString('es-AR')}</strong></span>
+                  </div>
                   {usuario && (
                     <div className="mt-3">
                       {inscripciones.has(Number(actividad.id)) ? (

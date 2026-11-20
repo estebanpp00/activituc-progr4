@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api.js';
+import { useNotificaciones } from '../store.js';
 
 function FormularioResena({ inscripcion }) {
   const [estrellas, setEstrellas] = useState(String(inscripcion.resena_estrellas || ''));
   const [comentario, setComentario] = useState(inscripcion.resena_comentario || '');
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
-  const [mensaje, setMensaje] = useState('');
+  const [yaTieneResena, setYaTieneResena] = useState(Boolean(inscripcion.resena_estrellas));
+  const notificar = useNotificaciones((state) => state.notificar);
 
   const guardar = async (event) => {
     event.preventDefault();
     setGuardando(true);
     setError('');
-    setMensaje('');
     try {
       await api('/resenas', {
         method: 'POST',
@@ -23,9 +24,16 @@ function FormularioResena({ inscripcion }) {
           comentario: comentario.trim()
         }
       });
-      setMensaje('Reseña guardada correctamente.');
+      const actualizacion = yaTieneResena;
+      setYaTieneResena(true);
+      notificar({
+        tipo: 'success',
+        titulo: actualizacion ? 'Reseña actualizada' : 'Reseña guardada',
+        mensaje: `Gracias por compartir tu opinión sobre ${inscripcion.actividad}.`
+      });
     } catch (e) {
       setError(e.message);
+      notificar({ tipo: 'danger', titulo: 'No se pudo guardar la reseña', mensaje: e.message });
     } finally {
       setGuardando(false);
     }
@@ -67,7 +75,6 @@ function FormularioResena({ inscripcion }) {
           <button className="btn btn-primary" disabled={guardando}>
             {guardando ? 'Guardando...' : 'Guardar reseña'}
           </button>
-          {mensaje && <span className="text-success">{mensaje}</span>}
         </div>
       </div>
       {error && <div className="alert alert-danger mt-3 mb-0">{error}</div>}

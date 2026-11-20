@@ -22,3 +22,36 @@ export const useSesion = create(
     }
   )
 );
+
+let siguienteNotificacion = 0;
+const temporizadores = new Map();
+
+export const useNotificaciones = create((set, get) => ({
+  notificaciones: [],
+  notificar: ({ tipo = 'info', titulo, mensaje }) => {
+    const id = ++siguienteNotificacion;
+    set((state) => ({
+      notificaciones: [...state.notificaciones, { id, tipo, titulo, mensaje, cerrando: false }]
+    }));
+    temporizadores.set(id, setTimeout(() => get().cerrar(id), 3500));
+    return id;
+  },
+  cerrar: (id) => {
+    const notificacion = get().notificaciones.find((item) => item.id === id);
+    if (!notificacion || notificacion.cerrando) return;
+    if (temporizadores.has(id)) {
+      clearTimeout(temporizadores.get(id));
+      temporizadores.delete(id);
+    }
+    set((state) => ({
+      notificaciones: state.notificaciones.map((item) => (
+        item.id === id ? { ...item, cerrando: true } : item
+      ))
+    }));
+    setTimeout(() => {
+      set((state) => ({
+        notificaciones: state.notificaciones.filter((item) => item.id !== id)
+      }));
+    }, 260);
+  }
+}));
